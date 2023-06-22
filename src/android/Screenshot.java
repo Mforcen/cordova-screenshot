@@ -9,12 +9,15 @@
 package com.darktalker.cordova.screenshot;
 
 import android.Manifest;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.CompressFormat;
 import android.net.Uri;
 import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.TextureView;
 import android.view.View;
@@ -31,6 +34,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 
 
 public class Screenshot extends CordovaPlugin {
@@ -84,36 +88,51 @@ public class Screenshot extends CordovaPlugin {
         return bitmap;
     }
 
-    private void scanPhoto(String imageFileName) {
-        Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-        File f = new File(imageFileName);
-        Uri contentUri = Uri.fromFile(f);
-        mediaScanIntent.setData(contentUri);
-        this.cordova.getActivity().sendBroadcast(mediaScanIntent);
-    }
-
     private void saveScreenshot(Bitmap bitmap, String format, String fileName, Integer quality) {
         try {
-            File folder = new File(Environment.getExternalStorageDirectory(), "Pictures");
-            if (!folder.exists()) {
-                folder.mkdirs();
+            final ContentValues values = new ContentValues();
+            String mimetype;
+            CompressFormat imgFormat = null;
+            if(format.equals("png")) {
+                mimetype = "image/png";
+                imgFormat = CompressFormat.PNG;
             }
-
-            File f = new File(folder, fileName + "." + format);
-
-            FileOutputStream fos = new FileOutputStream(f);
-            if (format.equals("png")) {
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
-            } else if (format.equals("jpg")) {
-                bitmap.compress(Bitmap.CompressFormat.JPEG, quality == null ? 100 : quality, fos);
+            else if(format.equals("jpg")) {
+                mimetype = "image/jpeg";
+                imgFormat = CompressFormat.JPEG;
             }
+            else throw new IOException("Format not recognized");
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, mimetype);
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures");
+
+            final ContentResolver resolver = this.cordova.getActivity().getApplicationContext()
+                    .getContentResolver();
+
+            Uri uri;
+
             JSONObject jsonRes = new JSONObject();
-            jsonRes.put("filePath", f.getAbsolutePath());
-            PluginResult result = new PluginResult(PluginResult.Status.OK, jsonRes);
+            PluginResult result;
+
+            try {
+                uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                if(uri == null)
+                    throw new IOException("Failed to create MediaStore record");
+                try(final OutputStream stream = resolver.openOutputStream(uri)){
+                    if(stream == null) throw new IOException("Failed to open output stream");
+                    if(!bitmap.compress(imgFormat, 95, stream))
+                        throw new IOException("Could not save bitmap");
+                }
+
+                jsonRes.put("filePath", uri.getPath());
+                result = new PluginResult(PluginResult.Status.OK, jsonRes);
+            } catch (IOException e) {
+                jsonRes.put("error", e.getMessage());
+                result = new PluginResult(PluginResult.Status.OK, jsonRes);
+            }
+
             mCallbackContext.sendPluginResult(result);
 
-            scanPhoto(f.getAbsolutePath());
-            fos.close();
         } catch (JSONException e) {
             mCallbackContext.error(e.getMessage());
 
