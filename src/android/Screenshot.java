@@ -11,17 +11,14 @@ package com.darktalker.cordova.screenshot;
 import android.Manifest;
 import android.content.ContentResolver;
 import android.content.ContentValues;
-import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.CompressFormat;
 import android.net.Uri;
-import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
-import android.view.TextureView;
+import android.util.Log;
 import android.view.View;
-import android.view.ViewGroup;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
@@ -31,8 +28,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 
@@ -116,8 +111,9 @@ public class Screenshot extends CordovaPlugin {
 
             try {
                 uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-                if(uri == null)
+                if(uri == null) {
                     throw new IOException("Failed to create MediaStore record");
+                }
                 try(final OutputStream stream = resolver.openOutputStream(uri)){
                     if(stream == null) throw new IOException("Failed to open output stream");
                     if(!bitmap.compress(imgFormat, 95, stream))
@@ -239,12 +235,9 @@ public class Screenshot extends CordovaPlugin {
         mAction = action;
         mArgs = args;
 
+        Log.i("Screenshot", "Executing " + mAction);
         if (action.equals("saveScreenshot")) {
-            if(PermissionHelper.hasPermission(this, PERMISSIONS[0])) {
-                saveScreenshot();
-            } else {
-                PermissionHelper.requestPermissions(this, SAVE_SCREENSHOT_SEC, PERMISSIONS);
-            }
+            saveScreenshot();
             return true;
         } else if (action.equals("getScreenshotAsURI")) {
             getScreenshotAsURI();
